@@ -12,6 +12,7 @@
 namespace Discord;
 
 use Discord\CommandClient\Command;
+use Discord\Parts\Channel\Message;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
@@ -59,7 +60,7 @@ class DiscordCommandClient extends Discord
             $this->commandClientOptions['prefix'] = str_replace('@mention', (string) $this->user, $this->commandClientOptions['prefix']);
             $this->commandClientOptions['name'] = str_replace('<UsernamePlaceholder>', $this->username, $this->commandClientOptions['name']);
 
-            $this->on('message', function ($message) {
+            $this->on('message', function (Message $message) {
                 if ($message->author->id == $this->id) {
                     return;
                 }
@@ -68,21 +69,23 @@ class DiscordCommandClient extends Discord
                     $withoutPrefix = substr($message->content, strlen($this->commandClientOptions['prefix']));
                     $args = str_getcsv($withoutPrefix, ' ');
                     $command = array_shift($args);
-
+                    /** @var Command $handler */
+                    $handler = null;
                     if (array_key_exists($command, $this->commands)) {
-                        $command = $this->commands[$command];
+                        $handler = $this->commands[$command];
                     } elseif (array_key_exists($command, $this->aliases)) {
-                        $command = $this->commands[$this->aliases[$command]];
+                        $handler = $this->commands[$this->aliases[$command]];
                     } else {
-                        // Command doesn't exist.
-                        return;
+                        return $message->reply('Неправильный формат команды ```'.$withoutPrefix. '```');
                     }
 
-                    $result = $command->handle($message, $args);
-
-                    if (is_string($result)) {
-                        $message->reply($result);
+                    $result = $handler->handle($message, $args);
+                    if (!is_string($result)) {
+                        $result = 'DONE';
                     }
+                    $result = preg_replace('#\\x1b[[][^A-Za-z]*[A-Za-z]#', '', $result);
+                    $result = "Команда выполнена. Результат: ```" . PHP_EOL . substr($result, 0 , 1960). '```';
+                    return $message->reply($result);
                 }
             });
         });
